@@ -1,36 +1,24 @@
-/* 
- * File:   fix_radiation.h
- * Author: felix
+/*
+ * fix_radiation.h
  *
- * Created on February 10, 2012, 4:50 PM
+ *  Created on: Feb 11, 2012
+ *      Author: jn
  */
 
-#ifdef FIX_CLASS
-
-FixStyle(radiation,FixRadiation)
-
-#else
-
-#ifndef FIX_RADIATION_H
-#define	FIX_RADIATION_H
+#ifndef FIX_RADIATION_H_
+#define FIX_RADIATION_H_
 
 #include "fix.h"
+
 namespace LAMMPS_NS {
 
 class FixRadiation : public Fix {
- public:
-
-  FixRadiation(class LAMMPS *, int, char **);
-  ~FixRadiation();
-  int setmask();
-  void init();
-  
- private:
+public :
+	FixRadiation(LAMMPS *, int , char **);
+	void init(LAMMPS *);
 
 };
-
 }
-
-#endif
 #endif
 
+#endif /* FIX_RADIATION_H_ */

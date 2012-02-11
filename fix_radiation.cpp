@@ -7,11 +7,12 @@
 
 using namespace LAMMPS_NS;
 
-FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
+void FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
 {
       if (narg < 5) error->all("Illegal fix adapt command");
         nevery = atoi(arg[3]);
       if (nevery <= 0) error->all("Illegal fix adapt command");
+      init(lmp);
 }
 
 FixRadiation::~FixRadiation()
@@ -19,12 +20,19 @@ FixRadiation::~FixRadiation()
 
 }
 
-FixRadiation::init()
+void FixRadiation::init(LAMMPS *lmp)
 {
-    NeighList *list = neighbor->lists->listfull;
-    for(int i=0;i<sizeof(list);i++)
+    //Print for all atoms, its neighbors list
+
+	NeighList **list = lmp->neighbor->lists;
+    for(int i=0;i<list->inum;i++)
     {
-        
-    }
+    	printf("atom %d, neighbors :\n", list[i]->index);
+
+    	for(int j=0;j<list[i]->inum;j++)
+    	{
+    		printf("	%d", list[i]->ilist[j]);
+    	}
     }
 }
+
