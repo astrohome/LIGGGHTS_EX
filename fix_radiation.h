@@ -24,9 +24,11 @@ class FixRadiation : public Fix {
   ~FixRadiation();
   int setmask();
   void init(LAMMPS *);
-
+  void post_force(int);
  private:
      int temp;
+     NeighList *list;
+     class PairGran *pair_gran;
 };
 
 }
