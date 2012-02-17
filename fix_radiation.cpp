@@ -22,12 +22,12 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
 
 void FixRadiation::post_force(int a)
 {    
-    int *ilist,*numneigh,**firstneigh;
-    double xtmp,ytmp,ztmp;
+    int *ilist,*jlist,*numneigh,**firstneigh;
+    double xtmp,ytmp,ztmp,radj,radi;
   
-  int inum,ii,i;
+  int i,j,ii,jj,inum,jnum;
     
-    inum = pair_gran->list->inum;
+  inum = pair_gran->list->inum;
   ilist = pair_gran->list->ilist;
   numneigh = pair_gran->list->numneigh;
   firstneigh = pair_gran->list->firstneigh;
@@ -35,17 +35,26 @@ void FixRadiation::post_force(int a)
   double *radius = atom->radius;
   double *rmass = atom->rmass;
   double **x = atom->x;
-  atom->
   int *type = atom->type;
   int nlocal = atom->nlocal;
   int *mask = atom->mask;
     // loop over neighbors of my atoms
   for (ii = 0; ii < inum; ii++) {
+      //Even don't ask me, what's going up here.
       i = ilist[ii];
-    xtmp = x[i][0];
-    ytmp = x[i][1];
-    ztmp = x[i][2];
-      printf("Molecular MAN!! xtmp=%d\n",xtmp);
+      xtmp = x[i][0]; //Seems to be temperature. But why in 3D? :-/
+      ytmp = x[i][1];
+      ztmp = x[i][2];
+      jlist = firstneigh[i]; //Neighbours???
+      jnum = numneigh[i]; //No idea.
+      radi = radius[i]; //Seems to be radius of current atom.
+       for (jj = 0; jj < jnum; jj++) {
+           j = jlist[jj];
+           radj = radius[j];
+           //printf("Radius?? A lot of them?? o_O %d\n",radj);
+       }
+      
+      printf("Molecular MAN!! xtmp=%d, rad=%d\n",xtmp,radi);
   }
   
 }
@@ -61,7 +70,7 @@ void FixRadiation::init(LAMMPS *lmp)
 }
 
 
-
+//Mask to provide to LAMMPS that we're not doing shit. Type is FORCE. Maybe change...
 int FixRadiation::setmask()
 {
         int mask = 0;
