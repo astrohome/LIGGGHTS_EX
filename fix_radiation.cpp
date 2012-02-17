@@ -53,8 +53,8 @@ void FixRadiation::post_force(int a)
            radj = radius[j];
            //printf("Radius?? A lot of them?? o_O %d\n",radj);
        }
-      
-      printf("Molecular MAN!! (x,y,z)=(%d,%d,%d), rad=%d, neighbours count=%d\n",x,y,z,radi,jnum);
+      //!!!!! ATTENTION!!!!! EPIC FAIL, float is %f in printf!!!
+      printf("Molecular MAN!! (x,y,z)=(%f,%f,%f), rad=%f, neighbours count=%d\n",x,y,z,radi,jnum);
   }
   
 }
