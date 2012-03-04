@@ -9,6 +9,7 @@
 #include "atom.h"
 #include "force.h"
 #include "error.h"
+#include "group.h"
 
 using namespace LAMMPS_NS;
 
@@ -23,7 +24,7 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
 void FixRadiation::post_force(int a)
 {    
     int *ilist,*jlist,*numneigh,**firstneigh;
-    double x,y,z,radj,radi;
+    double x,y,z,radj,radi,nx,ny,nz;
   
   int i,j,ii,jj,inum,jnum;
     
@@ -39,22 +40,32 @@ void FixRadiation::post_force(int a)
   int nlocal = atom->nlocal;
   int *mask = atom->mask;
     // loop over neighbors of my atoms
+  
   for (ii = 0; ii < inum; ii++) {
-      //Even don't ask me, what's going up here.
+      
       i = ilist[ii];
-      x = pos[i][0]; //AAAAA, it's position!!! :-/
+      x = pos[i][0]; 
       y = pos[i][1];
       z = pos[i][2];
-      jlist = firstneigh[i]; //Neighbours - this is NEIGHBOURS.
-      jnum = numneigh[i]; //Count of neighbours.
-      radi = radius[i]; //Seems to be radius of current atom.
-       for (jj = 0; jj < jnum; jj++) {
-           j = jlist[jj];
-           radj = radius[j];
-           //printf("Radius?? A lot of them?? o_O %d\n",radj);
-       }
-      //!!!!! ATTENTION!!!!! EPIC FAIL, float is %f in printf!!!
-      printf("Molecular MAN!! (x,y,z)=(%f,%f,%f), rad=%f, neighbours count=%d\n",x,y,z,radi,jnum);
+      radi = radius[i];
+      jlist = firstneigh[i];
+      jnum = numneigh[i];
+      
+      //printf("Neighbours count=%d\n",jnum);
+      
+      for (jj = 0; jj < jnum; jj++) {
+      j = jlist[jj];
+
+      if (!(mask[i] & groupbit) && !(mask[j] & groupbit)) continue;
+      
+          nx = pos[j][0];
+          ny = pos[j][1];
+          nz = pos[j][2];
+          radj = radius[j];
+          
+      printf("MOLECULAR MAN!! (x,y,z)=(%f,%f,%f), rad=%f\n",nx,ny,nz,radj);
+      
+      }
   }
   
 }
