@@ -45,6 +45,7 @@ struct param {
 
 class FixRadiation : public Fix {
  public:
+  
   FixRadiation(class LAMMPS *, int, char **);
   ~FixRadiation();
   int setmask();
@@ -53,22 +54,23 @@ class FixRadiation : public Fix {
   void updatePtrs();
   
  private:
-     int temp;
+   
      NeighList *list;
      class PairGran *pair_gran;
      double dist(double,double,double,double,double,double);
      double procedeCalc(double, double, double);
      double sx, sy, sz, intensity, sr, wavelength, ss, sp;
      
-     class FixPropertyGlobal* fix_conductivity;
      class FixPropertyAtom* fix_temp;
+     class FixPropertyAtom* fix_heatFlux;
      class FixPropertyAtom* fix_heatSource;
+     class FixPropertyGlobal* fix_conductivity;
+     class FixScalarTransportEquation *fix_ste;
      
      double *conductivity;
      double *heatSource; 
      double *heatFlux; 
-     double *Temp; 
-     class FixPropertyAtom* fix_heatFlux;
+     double *Temp;
 
 };
 

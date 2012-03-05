@@ -1,23 +1,26 @@
+#include "fix_radiation.h"
 #include "math.h"
 #include "stdlib.h"
 #include "string.h"
-#include "fix_radiation.h"
+#include "atom.h"
+#include "domain.h"
+#include "group.h"
+#include "force.h"
+#include "comm.h"
+#include "update.h"
+#include "error.h"
+#include "modify.h"
+#include "neighbor.h"
 #include "neigh_list.h"
 #include "neigh_request.h"
 #include "pair_gran.h"
-#include "neighbor.h"
-#include "atom.h"
-#include "force.h"
-#include "error.h"
-#include "group.h"
-#include "create_atoms.h"
-#include "fix_heat_gran.h"
+#include "math_extra.h"
 #include "fix_property_global.h"
 #include "fix_property_atom.h"
 #include "fix_scalar_transport_equation.h"
 #include "mech_param_gran.h"
+#include "respa.h"
 #include "compute_pair_gran_local.h"
-#include "modify.h"
 
 using namespace LAMMPS_NS;
 
@@ -45,12 +48,17 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
 }
 
 void FixRadiation::post_force(int a)
-{    
-    int *ilist,*jlist,*numneigh,**firstneigh;
-    double x,y,z,radj,radi,nx,ny,nz,Cp,shapef;
+{  
+  int *ilist,*jlist,*numneigh,**firstneigh;
+  double x,y,z,radj,radi,nx,ny,nz,Cp,shapef;
   
-  int i,j,ii,jj,inum,jnum;
-    
+  int i,j,ii,jj,inum,jnum;  
+  
+  int newton_pair = force->newton_pair;
+  
+  if (strcmp(force->pair_style,"hybrid")==0) error->warning("Fix heat/gran implementation may not be valid for pair style hybrid");
+  if (strcmp(force->pair_style,"hybrid/overlay")==0) error->warning("Fix heat/gran implementation may not be valid for pair style hybrid/overlay");
+  
   inum = pair_gran->list->inum;
   ilist = pair_gran->list->ilist;
   numneigh = pair_gran->list->numneigh;
@@ -62,11 +70,16 @@ void FixRadiation::post_force(int a)
   int *type = atom->type;
   int nlocal = atom->nlocal;
   int *mask = atom->mask;
-    // loop over neighbors of my atoms
   
+  updatePtrs();
+  
+  // loop over neighbors of my atoms
   for (ii = 0; ii < inum; ii++) {
       
       i = ilist[ii];
+      
+      if (!(mask[i] & groupbit)) continue;
+      
       x = pos[i][0]; 
       y = pos[i][1];
       z = pos[i][2];
@@ -74,40 +87,27 @@ void FixRadiation::post_force(int a)
       jlist = firstneigh[i];
       jnum = numneigh[i];
       
-      cout<<radi<<" "<<sr<<endl;
+      //cout<<radi<<" "<<sr<<endl;
       
       Cp = conductivity[type[i]-1];
-      cout<<"Conductivity: "<<conductivity[type[i]-1]<<endl;
-      shapef = procedeCalc(radi, sr, dist(sx,sy,sz,x,y,z));
-      cout<<"Shape factor: "<<shapef<<endl;
-      cout<<Temp[0];
+      //cout<<"Conductivity: "<<conductivity[type[i]-1]<<endl;
+      
+      double distc = dist(sx,sy,sz,x,y,z);
+      //cout<<"Distance"<<distc<<endl;
+      if(distc <= 10*radi)
+      {
+      shapef = procedeCalc(radi, sr, distc);
+      //cout<<"Shape factor: "<<shapef<<endl;
       double T1 = Temp[i];
-      cout<<"Old temp: "<<T1<<endl;
+      //cout<<"Old temp: "<<T1<<endl;
       double m = rmass[i];
-      cout<<"Mass: "<<m<<endl;
+      //cout<<"Mass: "<<m<<endl;
       double T2 = T1 + (sp*shapef)/(m*Cp);
       
-      cout<<"Old temp: "<<T1<<" new temp: "<<T2<<endl;
       heatFlux[i] = T2;
-      
-      
-      //printf("Neighbours count=%d\n",jnum);
-      
-      /*for (jj = 0; jj < jnum; jj++) {
-      j = jlist[jj];
-
-      if (!(mask[i] & groupbit) && !(mask[j] & groupbit)) continue;
-      
-          nx = pos[j][0];
-          ny = pos[j][1];
-          nz = pos[j][2];
-          radj = radius[j];
-          
-      //printf("MOLECULAR MAN!! (x,y,z)=(%f,%f,%f), rad=%f\n",nx,ny,nz,radj);
-                
-      }*/
-  }
-  
+      //cout<<"Old temp: "<<T1<<", old TempFlux: "<<heatFlux[i]<<" new temp: "<<T2<<endl;
+      }
+  }      
 }
 
 double FixRadiation::dist(double x1, double y1, double z1, double x2, double y2, double z2)
@@ -156,7 +156,7 @@ void FixRadiation::init()
                 if(conductivity[i-1] < 0.) error->all("Fix heat/gran: Thermal conductivity must not be < 0");
             }
       
-      cout<<"Calling updatePtrs()"<<endl;
+      //cout<<"Calling updatePtrs()"<<endl;
       updatePtrs();
         
       cout<<"INIT finished"<<endl;
