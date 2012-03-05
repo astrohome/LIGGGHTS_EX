@@ -17,6 +17,8 @@ FixStyle(heat/radiation,FixRadiation)
 #define NB_INT 	100
 #define RADIUS 	5
 #define DIST 	10 * RADIUS
+#define TEMP    600
+#define BOLTS   1.3806488*pow(10,-23)
 
 #include "fix.h"
 #include <iostream>
@@ -27,17 +29,17 @@ using namespace std;
 namespace LAMMPS_NS {
     
 struct param {
-  float da;
-  float db;
-  float D;
+  double da;
+  double db;
+  double D;
 
-  float cosa;
-  float cosb;
-  float sina;
-  float sinb;
+  double cosa;
+  double cosb;
+  double sina;
+  double sinb;
 
-  float R [2];
-  float integral;
+  double R [2];
+  double integral;
 
 };
 
@@ -46,15 +48,27 @@ class FixRadiation : public Fix {
   FixRadiation(class LAMMPS *, int, char **);
   ~FixRadiation();
   int setmask();
-  void init(LAMMPS *);
+  void init();
   void post_force(int);
+  void updatePtrs();
+  
  private:
      int temp;
      NeighList *list;
      class PairGran *pair_gran;
-     float dist(float,float,float,float,float,float);
-     int procedeCalc(float, float, float);
-     float sx, sy, sz, intensity, sr, wavelength;
+     double dist(double,double,double,double,double,double);
+     double procedeCalc(double, double, double);
+     double sx, sy, sz, intensity, sr, wavelength, ss, sp;
+     
+     class FixPropertyGlobal* fix_conductivity;
+     class FixPropertyAtom* fix_temp;
+     class FixPropertyAtom* fix_heatSource;
+     
+     double *conductivity;
+     double *heatSource; 
+     double *heatFlux; 
+     double *Temp; 
+     class FixPropertyAtom* fix_heatFlux;
 
 };
 

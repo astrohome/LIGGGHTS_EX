@@ -11,12 +11,24 @@
 #include "error.h"
 #include "group.h"
 #include "create_atoms.h"
+#include "fix_heat_gran.h"
+#include "fix_property_global.h"
+#include "fix_property_atom.h"
+#include "fix_scalar_transport_equation.h"
+#include "mech_param_gran.h"
+#include "compute_pair_gran_local.h"
+#include "modify.h"
 
 using namespace LAMMPS_NS;
 
 FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
 {
     if (narg < 9) error->all("Illegal fix heat/gran command, not enough arguments");
+    
+    fix_temp = fix_heatFlux = fix_heatSource = NULL;
+    fix_conductivity = NULL;
+    
+    conductivity = NULL;
     
     sx = atof(arg[3]);
     sy = atof(arg[4]);
@@ -26,13 +38,16 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
     wavelength = atof(arg[7]);
     intensity = atof(arg[8]);
     
+    ss = M_PI * pow(sr+sr,2);
+    sp = ss*1*pow(TEMP,4)*BOLTS;
+    
     pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
 }
 
 void FixRadiation::post_force(int a)
 {    
     int *ilist,*jlist,*numneigh,**firstneigh;
-    double x,y,z,radj,radi,nx,ny,nz;
+    double x,y,z,radj,radi,nx,ny,nz,Cp,shapef;
   
   int i,j,ii,jj,inum,jnum;
     
@@ -61,7 +76,20 @@ void FixRadiation::post_force(int a)
       
       cout<<radi<<" "<<sr<<endl;
       
-      procedeCalc(radi, sr, dist(sx,sy,sz,x,y,z));
+      Cp = conductivity[type[i]-1];
+      cout<<"Conductivity: "<<conductivity[type[i]-1]<<endl;
+      shapef = procedeCalc(radi, sr, dist(sx,sy,sz,x,y,z));
+      cout<<"Shape factor: "<<shapef<<endl;
+      cout<<Temp[0];
+      double T1 = Temp[i];
+      cout<<"Old temp: "<<T1<<endl;
+      double m = rmass[i];
+      cout<<"Mass: "<<m<<endl;
+      double T2 = T1 + (sp*shapef)/(m*Cp);
+      
+      cout<<"Old temp: "<<T1<<" new temp: "<<T2<<endl;
+      heatFlux[i] = T2;
+      
       
       //printf("Neighbours count=%d\n",jnum);
       
@@ -82,9 +110,9 @@ void FixRadiation::post_force(int a)
   
 }
 
-float FixRadiation::dist(float x1, float y1, float z1, float x2, float y2, float z2)
+double FixRadiation::dist(double x1, double y1, double z1, double x2, double y2, double z2)
 {
-    float delx = x2-x1; float dely=y2-y1; float delz=z2-z1;
+    double delx = x2-x1; double dely=y2-y1; double delz=z2-z1;
     return delx*delx + dely*dely + delz*delz;
 }
 
@@ -93,9 +121,45 @@ FixRadiation::~FixRadiation()
     
 }
 
-void FixRadiation::init(LAMMPS *lmp)
+void FixRadiation::updatePtrs()
 {
+  Temp = fix_temp->vector_atom;
+  vector_atom = Temp; 
 
+  heatFlux = fix_heatFlux->vector_atom;
+  heatSource = fix_heatSource->vector_atom;
+}
+
+void FixRadiation::init()
+{
+      if (!atom->radius_flag || !atom->rmass_flag) error->all("Please use a granular atom style for fix heat/gran");
+
+      if(!force->pair_match("gran", 0)) error->all("Please use a granular pair style for fix heat/gran");
+      
+        pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
+        
+        fix_temp = static_cast<FixPropertyAtom*>(modify->find_fix_property("Temp","property/atom","scalar",0,0));
+        fix_heatFlux = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatFlux","property/atom","scalar",0,0));
+        fix_heatSource = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatSource","property/atom","scalar",0,0));
+
+        int max_type = pair_gran->mpg->max_type();
+
+        if(conductivity) delete []conductivity;
+        conductivity = new double[max_type];
+        fix_conductivity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalConductivity","property/global","peratomtype",max_type,0));
+
+        // pre-calculate conductivity for possible contact material combinations
+        for(int i=1;i< max_type+1; i++)
+            for(int j=1;j<max_type+1;j++)
+            {
+                conductivity[i-1] = fix_conductivity->compute_vector(i-1);
+                if(conductivity[i-1] < 0.) error->all("Fix heat/gran: Thermal conductivity must not be < 0");
+            }
+      
+      cout<<"Calling updatePtrs()"<<endl;
+      updatePtrs();
+        
+      cout<<"INIT finished"<<endl;
 }
 
 
@@ -108,19 +172,19 @@ int FixRadiation::setmask()
 }
 
 //To extend to a third D integral. (integral depending only on one dimension)
-float third_D_coef(float d, float sind)
+double third_D_coef(double d, double sind)
 {
 	return 2 * M_PI * d * sind;
 }
 
 //returns the squared norm of the vector vect (2 Dimensions)
-float sqr_vect_norm(float * vect)
+double sqr_vect_norm(double * vect)
 {
 	return pow(vect[0], 2) + pow(vect[1], 2);
 }
 
 //Calculates the contribution of one element in the integral
-float integrate(struct param * par)
+double integrate(struct param * par)
 {
 	return (par->cosa * par->cosb / sqr_vect_norm(par->R));
 }
@@ -137,8 +201,8 @@ void calculate_vector(struct param * par, int ia, int ib)
 bool scalar_test(struct param * par)
 {
 	bool test = false;
-	float scala = par->cosa * par->R[0] + par->sina * par->R[1];
-	float scalb = (-par->cosb) * par->R[0] + (-par->sinb) * par->R[1];
+	double scala = par->cosa * par->R[0] + par->sina * par->R[1];
+	double scalb = (-par->cosb) * par->R[0] + (-par->sinb) * par->R[1];
 
 	if(scala > 0)
 		test = true;
@@ -149,11 +213,11 @@ bool scalar_test(struct param * par)
 	return test;
 }
 
-int FixRadiation::procedeCalc(float radA, float radB, float dist)
+double FixRadiation::procedeCalc(double radA, double radB, double dist)
 {
 	int ia = 0;
 	int ib = 0;
-	float integral = 0;
+	double integral = 0;
 
 	//init parameter
 
@@ -203,10 +267,5 @@ int FixRadiation::procedeCalc(float radA, float radB, float dist)
 	}
 
 	par.integral = integral / (M_PI * 2 * M_PI * pow(par.da, 2)); //normalize integral
-	cout 	<< "distance : " << par.D
-			<< ", radius A : " << par.da << ", radius B : " << par.db
-			<< ", shape factor = " << par.integral
-			<< endl;
-
-	return 0;
+        return par.integral;
 }
