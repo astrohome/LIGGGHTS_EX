@@ -24,9 +24,10 @@
 
 using namespace LAMMPS_NS;
 
+//fix name all heat/radiation SOURCE_X SOURCE_Y SOURCE_Z RADIUS WAVELENGTH INTENSITY ALGO TEMP CUTOFF NB_INT
 FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
 {
-    if (narg < 9) error->all("Illegal fix heat/gran command, not enough arguments");
+    if (narg < 12) error->all("Illegal fix heat/gran command, not enough arguments");
     
     fix_temp = fix_heatFlux = fix_heatSource = NULL;
     fix_conductivity = NULL;
@@ -41,8 +42,12 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
     wavelength = atof(arg[7]);
     intensity = atof(arg[8]);
     
+    st = atof(arg[9]);
+    cutoff = atoi(arg[10]);
+    nb_int = atoi(arg[11]);
+    
     ss = M_PI * pow(sr+sr,2);
-    sp = ss*1*pow(TEMP,4)*BOLTS;
+    sp = ss*1*pow(st,4)*BOLTS;
     
     pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
 }
@@ -87,25 +92,22 @@ void FixRadiation::post_force(int a)
       jlist = firstneigh[i];
       jnum = numneigh[i];
       
-      //cout<<radi<<" "<<sr<<endl;
-      
-      Cp = conductivity[type[i]-1];
-      //cout<<"Conductivity: "<<conductivity[type[i]-1]<<endl;
-      
       double distc = dist(sx,sy,sz,x,y,z);
-      //cout<<"Distance"<<distc<<endl;
-      if(distc <= 10*radi)
-      {
-      shapef = procedeCalc(radi, sr, distc);
-      //cout<<"Shape factor: "<<shapef<<endl;
-      double T1 = Temp[i];
-      //cout<<"Old temp: "<<T1<<endl;
-      double m = rmass[i];
-      //cout<<"Mass: "<<m<<endl;
-      double T2 = T1 + (sp*shapef)/(m*Cp);
-      
-      heatFlux[i] = T2;
-      //cout<<"Old temp: "<<T1<<", old TempFlux: "<<heatFlux[i]<<" new temp: "<<T2<<endl;
+
+      if(distc <= cutoff*radi)
+      {          
+            Cp = conductivity[type[i]-1];
+            shapef = procedeCalc(radi, sr, distc);
+            //cout<<"Shape factor: "<<shapef<<endl;
+            double T1 = Temp[i];
+            //cout<<"Old temp: "<<T1<<endl;
+            double m = rmass[i];
+            //cout<<"Mass: "<<m<<endl;
+            double dt = (sp*shapef)/(m*Cp);
+
+            cout<<"Old temp: "<<T1<<", old TempFlux: "<<heatFlux[i];
+            heatFlux[i] += dt;
+            cout<<" New heatFlux: "<<heatFlux[i]<<endl;      
       }
   }      
 }
@@ -159,7 +161,7 @@ void FixRadiation::init()
       //cout<<"Calling updatePtrs()"<<endl;
       updatePtrs();
         
-      cout<<"INIT finished"<<endl;
+      cout<<"INIT finished "<<BOLTS<<endl;
 }
 
 
@@ -240,23 +242,21 @@ double FixRadiation::procedeCalc(double radA, double radB, double dist)
 
 	par.integral = 0;
 
-	int nb = NB_INT; //Number if integration steps
-
 	//starting discrete integration
-	for (ia=0;ia<nb;ia++)
+	for (ia=0;ia<nb_int;ia++)
 	{
 		integral = 0;
 
 		// Calculates the vector da coordinates, according to the angle ia
-		par.cosa = par.da * cos((M_PI * ia) / (2 * NB_INT));
-		par.sina = par.da * sin((M_PI * ia) / (2 * NB_INT));
+		par.cosa = par.da * cos((M_PI * ia) / (2 * nb_int));
+		par.sina = par.da * sin((M_PI * ia) / (2 * nb_int));
 
-		for (ib=0;ib<nb;ib++)
+		for (ib=0;ib<nb_int;ib++)
 		{
 
 			// Calculates the vector db coordinates, according to the angle ib
-			par.cosb = par.db * cos((M_PI * ib) / (2 * NB_INT));
-			par.sinb = par.db * sin((M_PI * ib) / (2 * NB_INT));
+			par.cosb = par.db * cos((M_PI * ib) / (2 * nb_int));
+			par.sinb = par.db * sin((M_PI * ib) / (2 * nb_int));
 
 			calculate_vector(&par, ia, ib);
 			if(scalar_test(&par))

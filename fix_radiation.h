@@ -14,10 +14,6 @@ FixStyle(heat/radiation,FixRadiation)
 #ifndef LMP_FIX_RADIATION_H
 #define	LMP_FIX_RADIATION_H
 
-#define NB_INT 	100
-#define RADIUS 	5
-#define DIST 	10 * RADIUS
-#define TEMP    600
 #define BOLTS   1.3806488*pow(10,-23)
 
 #include "fix.h"
@@ -59,7 +55,15 @@ class FixRadiation : public Fix {
      class PairGran *pair_gran;
      double dist(double,double,double,double,double,double);
      double procedeCalc(double, double, double);
-     double sx, sy, sz, intensity, sr, wavelength, ss, sp;
+     double sx, sy, sz, //Coordinates of virtual source
+            intensity,  
+            sr,         //Source radius
+            wavelength, 
+            ss,         //Source surface
+            sp,         //Source power
+            st,         //Source temperature
+            cutoff,     //Cutoff parameter
+            nb_int;     //Integration precision
      
      class FixPropertyAtom* fix_temp;
      class FixPropertyAtom* fix_heatFlux;
