@@ -14,7 +14,7 @@ FixStyle(heat/radiation,FixRadiation)
 #ifndef LMP_FIX_RADIATION_H
 #define	LMP_FIX_RADIATION_H
 
-#define BOLTS   1.3806488*pow(10,-23)
+#define BOLTS   1.3806488*pow((float)10,-23)
 
 #include "fix.h"
 #include <iostream>
@@ -29,10 +29,10 @@ struct param {
   double db;
   double D;
 
-  double cosa;
-  double cosb;
-  double sina;
-  double sinb;
+  double xda;
+  double xdb;
+  double yda;
+  double ydb;
 
   double R [2];
   double integral;
