@@ -98,11 +98,12 @@ void FixRadiation::post_force(int a)
       {          
             Cp = conductivity[type[i]-1];
             shapef = procedeCalc(radi, sr, distc);
-            //cout<<"Shape factor: "<<shapef<<endl;
+            cout<<"Shape factor: "<<shapef<<endl;
             double T1 = Temp[i];
             //cout<<"Old temp: "<<T1<<endl;
             double m = rmass[i];
-            //cout<<"Mass: "<<m<<endl;
+            cout<<"Mass: "<<m<<endl;
+            cout<<"Power: "<<sp<<" CP: "<<Cp<<" Dist: "<<distc<<endl;
             double dt = (sp*shapef)/(m*Cp);
 
             cout<<"Old temp: "<<T1<<", old TempFlux: "<<heatFlux[i];
@@ -125,43 +126,42 @@ FixRadiation::~FixRadiation()
 
 void FixRadiation::updatePtrs()
 {
-  Temp = fix_temp->vector_atom;
-  vector_atom = Temp; 
+    Temp = fix_temp->vector_atom;
+    vector_atom = Temp; 
 
-  heatFlux = fix_heatFlux->vector_atom;
-  heatSource = fix_heatSource->vector_atom;
+    heatFlux = fix_heatFlux->vector_atom;
+    heatSource = fix_heatSource->vector_atom;
 }
 
 void FixRadiation::init()
 {
-      if (!atom->radius_flag || !atom->rmass_flag) error->all("Please use a granular atom style for fix heat/gran");
+    if (!atom->radius_flag || !atom->rmass_flag) error->all("Please use a granular atom style for fix heat/gran");
 
-      if(!force->pair_match("gran", 0)) error->all("Please use a granular pair style for fix heat/gran");
+    if(!force->pair_match("gran", 0)) error->all("Please use a granular pair style for fix heat/gran");
       
-        pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
-        
-        fix_temp = static_cast<FixPropertyAtom*>(modify->find_fix_property("Temp","property/atom","scalar",0,0));
-        fix_heatFlux = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatFlux","property/atom","scalar",0,0));
-        fix_heatSource = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatSource","property/atom","scalar",0,0));
+    pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
 
-        int max_type = pair_gran->mpg->max_type();
+    fix_temp = static_cast<FixPropertyAtom*>(modify->find_fix_property("Temp","property/atom","scalar",0,0));
+    fix_heatFlux = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatFlux","property/atom","scalar",0,0));
+    fix_heatSource = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatSource","property/atom","scalar",0,0));
 
-        if(conductivity) delete []conductivity;
-        conductivity = new double[max_type];
-        fix_conductivity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalConductivity","property/global","peratomtype",max_type,0));
+    int max_type = pair_gran->mpg->max_type();
 
-        // pre-calculate conductivity for possible contact material combinations
-        for(int i=1;i< max_type+1; i++)
-            for(int j=1;j<max_type+1;j++)
-            {
-                conductivity[i-1] = fix_conductivity->compute_vector(i-1);
-                if(conductivity[i-1] < 0.) error->all("Fix heat/gran: Thermal conductivity must not be < 0");
-            }
-      
-      //cout<<"Calling updatePtrs()"<<endl;
-      updatePtrs();
-        
-      cout<<"INIT finished "<<BOLTS<<endl;
+    if(conductivity) delete []conductivity;
+    conductivity = new double[max_type];
+    fix_conductivity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalConductivity","property/global","peratomtype",max_type,0));
+
+    // pre-calculate conductivity for possible contact material combinations
+    for(int i=1;i< max_type+1; i++)
+        for(int j=1;j<max_type+1;j++)
+        {
+            conductivity[i-1] = fix_conductivity->compute_vector(i-1);
+            if(conductivity[i-1] < 0.) error->all("Fix heat/gran: Thermal conductivity must not be < 0");
+        }
+
+    updatePtrs();
+
+    cout<<"INIT finished "<<BOLTS<<endl;
 }
 
 
@@ -202,17 +202,17 @@ void calculate_vector(struct param * par, int ia, int ib)
 //by testing the scalar product of the 2 vectors.
 bool scalar_test(struct param * par)
 {
-	bool test = false;
-	double scala = par->cosa * par->R[0] + par->sina * par->R[1];
-	double scalb = (-par->cosb) * par->R[0] + (-par->sinb) * par->R[1];
+    bool test = false;
+    double scala = par->cosa * par->R[0] + par->sina * par->R[1];
+    double scalb = (-par->cosb) * par->R[0] + (-par->sinb) * par->R[1];
 
-	if(scala > 0)
-		test = true;
+    if(scala > 0)
+            test = true;
 
-	if(scalb > 0)
-		test = true;
+    if(scalb > 0)
+            test = true;
 
-	return test;
+    return test;
 }
 
 double FixRadiation::procedeCalc(double radA, double radB, double dist)
@@ -231,14 +231,6 @@ double FixRadiation::procedeCalc(double radA, double radB, double dist)
 		par.da = radA;
                 par.db = radB;
         }
-	else
-		par.da = par.db = RADIUS;
-
-	//If the distance is not specified, take the default value
-	if( dist >= 0)
-		par.D = dist;
-	else
-		par.D = DIST;
 
 	par.integral = 0;
 
