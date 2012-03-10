@@ -21,6 +21,7 @@
 #include "mech_param_gran.h"
 #include "respa.h"
 #include "compute_pair_gran_local.h"
+#include <math.h>
 
 using namespace LAMMPS_NS;
 
@@ -47,7 +48,7 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
     nb_int = atoi(arg[11]);
     
     ss = M_PI * pow(sr+sr,2);
-    sp = ss*1*pow(st,4)*BOLTS;
+    sp = ss*1*pow(st,4) * BOLTS;
     
     pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
 }
@@ -174,45 +175,52 @@ int FixRadiation::setmask()
 }
 
 //To extend to a third D integral. (integral depending only on one dimension)
-double third_D_coef(double d, double sind)
+double third_D_coef(double d, double sind, int nb)
 {
-	return 2 * M_PI * d * sind;
+	return 2 * pow((M_PI * d), 2) * sind / ((double)nb);
 }
 
 //returns the squared norm of the vector vect (2 Dimensions)
-double sqr_vect_norm(double * vect)
+double sqr_vect_norm(double vecta, double vectb)
 {
-	return pow(vect[0], 2) + pow(vect[1], 2);
+	return pow(vecta, 2) + pow(vectb, 2);
 }
 
 //Calculates the contribution of one element in the integral
 double integrate(struct param * par)
 {
-	return (par->cosa * par->cosb / sqr_vect_norm(par->R));
+	double cosg1, cosg2;
+	double normR;
+	normR = sqrt(sqr_vect_norm(par->R[0], par->R[1]));
+	cosg1 = (par->xda * par->R[0] + par->yda * par->R[1]) / (par->da * normR);
+ 	cosg2 = (par->xdb * par->R[0] + par->ydb * par->R[1]) / (par->db * normR);
+
+ 	if (normR == 0)
+ 		return 0;
+ 	else
+ 		return cosg1 * cosg2 / pow(normR, 2);
 }
 
 void calculate_vector(struct param * par, int ia, int ib)
 {
 	//Calculates the value of the R vector
-	par->R[0] = par->D - par->cosa - par->cosb;
-	par->R[1] = - par->sina - par->sinb;
+	par->R[0] = par->D - par->xda - par->xdb;
+	par->R[1] = - par->yda - par->ydb;
+
 }
 
 //This function tests if the two points can physically "see" each other,
 //by testing the scalar product of the 2 vectors.
 bool scalar_test(struct param * par)
 {
-	bool test = false;
-	double scala = par->cosa * par->R[0] + par->sina * par->R[1];
-	double scalb = (-par->cosb) * par->R[0] + (-par->sinb) * par->R[1];
+	double scala = par->xda * par->R[0] + par->yda * par->R[1];
+	double scalb = par->xdb * par->R[0] + par->ydb * par->R[1];
 
-	if(scala > 0)
-		test = true;
+	if(scala > 0 && scalb > 0)
+		return true;
 
-	if(scalb > 0)
-		test = true;
-
-	return test;
+	else
+		return false;
 }
 
 double FixRadiation::procedeCalc(double radA, double radB, double dist)
@@ -226,46 +234,37 @@ double FixRadiation::procedeCalc(double radA, double radB, double dist)
 	struct param par;
 
 	//If the radius is not specified, take the default value
-	if ( radA > 0 && radB > 0)
-        {
-		par.da = radA;
-                par.db = radB;
-        }
-	else
-		par.da = par.db = RADIUS;
+	par.da = radA;
+	par.db = radB;
 
 	//If the distance is not specified, take the default value
 	if( dist >= 0)
 		par.D = dist;
-	else
-		par.D = DIST;
 
 	par.integral = 0;
 
 	//starting discrete integration
-	for (ia=0;ia<nb_int;ia++)
+	for (ia = 0 ; ia < nb_int ; ia++)
 	{
 		integral = 0;
 
 		// Calculates the vector da coordinates, according to the angle ia
-		par.cosa = par.da * cos((M_PI * ia) / (2 * nb_int));
-		par.sina = par.da * sin((M_PI * ia) / (2 * nb_int));
+		par.xda = par.da * cos((M_PI * ia) / (2 * nb_int));
+		par.yda = par.da * sin((M_PI * ia) / (2 * nb_int));
 
-		for (ib=0;ib<nb_int;ib++)
+		for (ib=0;ib<2*nb_int;ib++)
 		{
 
 			// Calculates the vector db coordinates, according to the angle ib
-			par.cosb = par.db * cos((M_PI * ib) / (2 * nb_int));
-			par.sinb = par.db * sin((M_PI * ib) / (2 * nb_int));
+			par.xdb = par.db * cos(-M_PI / 2 + (M_PI * ib) / (2 * nb_int));
+			par.ydb = par.db * sin((M_PI * ib) / (2 * nb_int));
 
 			calculate_vector(&par, ia, ib);
 			if(scalar_test(&par))
-				integral = integral + integrate(&par) * third_D_coef(par.db, par.sinb);
+				integral = integral + integrate(&par) * third_D_coef(par.db, par.ydb, nb_int) / 2;
 		}
-		integral = integral * third_D_coef(par.da, par.sina);
-		par.integral = par.integral + integral;
+		integral = integral * third_D_coef(par.da, par.yda, nb_int);
+		par.integral += integral;
 	}
-
-	par.integral = integral / (M_PI * 2 * M_PI * pow(par.da, 2)); //normalize integral
-        return par.integral;
+	return par.integral;
 }
