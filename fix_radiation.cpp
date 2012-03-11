@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include "fix_radiation.h"
 #include "math.h"
 #include "stdlib.h"
@@ -43,11 +45,17 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
     wavelength = atof(arg[7]);
     intensity = atof(arg[8]);
     
-    st = atof(arg[9]);
-    cutoff = atoi(arg[10]);
-    nb_int = atoi(arg[11]);
+    st = atof(arg[10]);
+    cutoff = atoi(arg[11]);
+    nb_int = atoi(arg[12]);
+    
+    for(int a = 0; a<13; a++)
+    {
+        cout<<"param["<<a<<"]="<<arg[a]<<endl;
+    }
     
     ss = M_PI * pow(sr+sr,2);
+    
     sp = ss*1*pow(st,4) * BOLTS;
     
     pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
@@ -89,6 +97,8 @@ void FixRadiation::post_force(int a)
       x = pos[i][0]; 
       y = pos[i][1];
       z = pos[i][2];
+      
+      cout<<x<<" "<<y<<" "<<z<<endl;
       radi = radius[i];
       jlist = firstneigh[i];
       jnum = numneigh[i];
@@ -97,7 +107,9 @@ void FixRadiation::post_force(int a)
 
       if(distc <= cutoff*radi)
       {          
+          cout<<"T = "<<st<<" S = "<<ss<<endl;
             Cp = conductivity[type[i]-1];
+            cout<<"R1 = "<<radi<<" R2 = "<<sr<<endl;
             shapef = procedeCalc(radi, sr, distc);
             cout<<"Shape factor: "<<shapef<<endl;
             double T1 = Temp[i];
@@ -106,9 +118,11 @@ void FixRadiation::post_force(int a)
             cout<<"Mass: "<<m<<endl;
             cout<<"Power: "<<sp<<" CP: "<<Cp<<" Dist: "<<distc<<endl;
             double dt = (sp*shapef)/(m*Cp);
-
+            
+            Temp[i] += dt;
+            
             cout<<"Old temp: "<<T1<<", old TempFlux: "<<heatFlux[i];
-            heatFlux[i] += dt;
+            //heatFlux[i] += dt;
             cout<<" New heatFlux: "<<heatFlux[i]<<endl;      
       }
   }      
@@ -117,7 +131,7 @@ void FixRadiation::post_force(int a)
 double FixRadiation::dist(double x1, double y1, double z1, double x2, double y2, double z2)
 {
     double delx = x2-x1; double dely=y2-y1; double delz=z2-z1;
-    return delx*delx + dely*dely + delz*delz;
+    return sqrt(delx*delx + dely*dely + delz*delz);
 }
 
 FixRadiation::~FixRadiation()
@@ -266,5 +280,6 @@ double FixRadiation::procedeCalc(double radA, double radB, double dist)
 		integral = integral * third_D_coef(par.da, par.yda, nb_int);
 		par.integral += integral;
 	}
+        par.integral /= 4 * pow((M_PI * par.da ),2); 
 	return par.integral;
 }
