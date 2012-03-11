@@ -14,7 +14,7 @@ FixStyle(heat/radiation,FixRadiation)
 #ifndef LMP_FIX_RADIATION_H
 #define	LMP_FIX_RADIATION_H
 
-#define BOLTS   1.3806488*pow((float)10,-23)
+#define BOLTS   1.3806488*pow((double)10,-23)
 
 #include "fix.h"
 #include <iostream>
