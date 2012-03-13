@@ -21,6 +21,7 @@
 #include "fix_property_atom.h"
 #include "fix_scalar_transport_equation.h"
 #include "mech_param_gran.h"
+#include "timer.h"
 #include "respa.h"
 #include "compute_pair_gran_local.h"
 #include <math.h>
@@ -30,15 +31,15 @@ using namespace LAMMPS_NS;
 //fix name all heat/radiation SOURCE_X SOURCE_Y SOURCE_Z RADIUS WAVELENGTH INTENSITY ALGO TEMP CUTOFF NB_INT
 FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg)
 {
-    if (narg < 12) error->all("Illegal fix heat/gran command, not enough arguments");
+    if (narg < 4) error->all("Illegal fix heat/radiation command, not enough arguments");
     
     fix_temp = fix_heatFlux = fix_heatSource = NULL;
     fix_conductivity = NULL;
     
     conductivity = NULL;
     
-    sx = atof(arg[3]);
-    sy = atof(arg[4]);
+    nb_int = atof(arg[3]);
+    /*sy = atof(arg[4]);
     sz = atof(arg[5]);
     
     sr = atof(arg[6]);
@@ -54,17 +55,23 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
         cout<<"param["<<a<<"]="<<arg[a]<<endl;
     }
     
-    ss = M_PI * pow(sr+sr,2);
+    ss = 
     
-    sp = ss*1*pow(st,4) * BOLTS;
+    sp = ss*1*pow(st,4) * BOLTS;*/
     
     pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
+}
+
+double FixRadiation::powerCalc(double radius, double temperature)
+{
+    double surf = M_PI * pow(2*radius,2);
+    return surf*1*pow(temperature,4) * BOLTS;
 }
 
 void FixRadiation::post_force(int a)
 {  
   int *ilist,*jlist,*numneigh,**firstneigh;
-  double x,y,z,radj,radi,nx,ny,nz,Cp,shapef;
+  double x,y,z,radj,radi,nx,ny,nz,Cpi,Cpj,shapef,mj,mi,Qe,power,distc,dt;
   
   int i,j,ii,jj,inum,jnum;  
   
@@ -97,34 +104,38 @@ void FixRadiation::post_force(int a)
       x = pos[i][0]; 
       y = pos[i][1];
       z = pos[i][2];
-      
-      cout<<x<<" "<<y<<" "<<z<<endl;
+
       radi = radius[i];
       jlist = firstneigh[i];
       jnum = numneigh[i];
       
-      double distc = dist(sx,sy,sz,x,y,z);
-
-      if(distc <= cutoff*radi)
-      {          
-          cout<<"T = "<<st<<" S = "<<ss<<endl;
-            Cp = conductivity[type[i]-1];
-            cout<<"R1 = "<<radi<<" R2 = "<<sr<<endl;
-            shapef = procedeCalc(radi, sr, distc);
-            cout<<"Shape factor: "<<shapef<<endl;
-            double T1 = Temp[i];
-            //cout<<"Old temp: "<<T1<<endl;
-            double m = rmass[i];
-            cout<<"Mass: "<<m<<endl;
-            cout<<"Power: "<<sp<<" CP: "<<Cp<<" Dist: "<<distc<<endl;
-            double dt = (sp*shapef)/(m*Cp);
-            
-            Temp[i] += dt;
-            
-            cout<<"Old temp: "<<T1<<", old TempFlux: "<<heatFlux[i];
-            //heatFlux[i] += dt;
-            cout<<" New heatFlux: "<<heatFlux[i]<<endl;      
-      }
+      Cpi = conductivity[type[i]-1];
+      power = powerCalc(radi,Temp[i]);
+      //cout<<"Power: "<<power<<endl;
+      Qe = power * update->dt;
+      //cout<<"Qe = "<<Qe<<endl;
+      mi = rmass[i];
+      Temp[i] -= Qe / (mi*Cpi);
+      //cout<<"Temp will decrease by "<<Qe / (mi*Cpi)<<endl;
+      //cout<<"T = "<<Temp[i]<<endl;
+      
+      for(jj = 0; jj < jnum; jj++) {      
+            j = jlist[jj];
+            nx = pos[j][0];
+            ny = pos[j][1];
+            nz = pos[j][2];
+            radj = radius[j];
+          
+            distc = dist(x,y,z,nx,ny,nz);
+            //cout<<"Distance = "<<distc<<endl;
+            Cpj = conductivity[type[j]-1];
+            shapef = procedeCalc(radi, radj, distc);
+            mj = rmass[j]; 
+            dt = (shapef*Qe)/(mj*Cpj);
+            //cout<<"Neight temp will increase by "<<dt<<endl;                        
+            Temp[j] += dt; 
+            //cout<<"Tn = "<<Temp[j]<<endl;
+      }     
   }      
 }
 
@@ -164,7 +175,7 @@ void FixRadiation::init()
 
     if(conductivity) delete []conductivity;
     conductivity = new double[max_type];
-    fix_conductivity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalConductivity","property/global","peratomtype",max_type,0));
+    fix_conductivity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalCapacity","property/global","peratomtype",max_type,0));
 
     // pre-calculate conductivity for possible contact material combinations
     for(int i=1;i< max_type+1; i++)
@@ -250,10 +261,7 @@ double FixRadiation::procedeCalc(double radA, double radB, double dist)
 	//If the radius is not specified, take the default value
 	par.da = radA;
 	par.db = radB;
-
-	//If the distance is not specified, take the default value
-	if( dist >= 0)
-		par.D = dist;
+	par.D = dist;
 
 	par.integral = 0;
 
