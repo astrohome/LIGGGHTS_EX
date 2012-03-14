@@ -41,8 +41,10 @@ See the README file in the top-level LAMMPS directory.
 #include "mech_param_gran.h"
 #include "respa.h"
 #include "compute_pair_gran_local.h"
+#include <iostream>
 
 using namespace LAMMPS_NS;
+using namespace std;
 
 #define SMALL 1e-8
 
@@ -58,6 +60,8 @@ FixHeatGran::FixHeatGran(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg
 
   if (narg < 4) error->all("Illegal fix heat/gran command, not enough arguments");
   T0 = atof(arg[3]);
+  
+  nb_int = atof(arg[4]);
 
   fix_temp = fix_heatFlux = fix_heatSource = NULL;
   fix_conductivity = NULL;
@@ -235,6 +239,9 @@ void FixHeatGran::post_force_eval(int vflag,int cpl_flag)
   int i,j,ii,jj,inum,jnum;
   double xtmp,ytmp,ztmp,delx,dely,delz;
   double radi,radj,radsum,rsq,r,rinv,rsqinv,tcoi,tcoj;
+  
+  double Q;  
+  
   int *ilist,*jlist,*numneigh,**firstneigh;
   int *touch,**firsttouch;
 
@@ -267,6 +274,25 @@ void FixHeatGran::post_force_eval(int vflag,int cpl_flag)
     radi = radius[i];
     jlist = firstneigh[i];
     jnum = numneigh[i];
+    
+    Q = powerCalc(radi,Temp[i]);
+    
+    heatFlux[i] -= Q;
+    int r;
+    for(r=0;r<inum;r++)
+    {
+        j = ilist[r];
+        if(i==j) continue;
+        
+        //cout<<"Test"<<endl;
+        radj = radius[j];
+        
+        if(radi>radj)        
+                heatFlux[j] += Q * procedeCalc(radj,radi,dist(xtmp, ytmp,ztmp,x[j][0],x[j][1],x[j][2]));
+        else heatFlux[j] += Q * procedeCalc(radi,radj,dist(xtmp, ytmp,ztmp,x[j][0],x[j][1],x[j][2]));
+    }
+    
+    
     if(HISTFLAG) touch = firsttouch[i];
 
     for (jj = 0; jj < jnum; jj++) {
@@ -348,4 +374,114 @@ void FixHeatGran::unregister_compute_pair_local(ComputePairGranLocal *ptr)
    
    if(cpl != ptr) error->all("Illegal situation in PairGran::unregister_compute_pair_local");
    cpl = NULL;
+}
+
+
+
+
+double FixHeatGran::powerCalc(double radius, double temperature)
+{
+    double surf = M_PI * pow(2*radius,2);
+    return surf*1*pow(temperature,4) * BOLTS;
+}
+
+
+double FixHeatGran::dist(double x1, double y1, double z1, double x2, double y2, double z2)
+{
+    double delx = x2-x1; double dely=y2-y1; double delz=z2-z1;
+    return sqrt(delx*delx + dely*dely + delz*delz);
+}
+
+
+//To extend to a third D integral. (integral depending only on one dimension)
+double FixHeatGran::third_D_coef(double d, double sind, int nb)
+{
+	return 2 * pow((M_PI * d), 2) * sind / ((double)nb);
+}
+
+//returns the squared norm of the vector vect (2 Dimensions)
+double FixHeatGran::sqr_vect_norm(double vecta, double vectb)
+{
+	return pow(vecta, 2) + pow(vectb, 2);
+}
+
+//Calculates the contribution of one element in the integral
+double FixHeatGran::integrate(struct param * par)
+{
+	double cosg1, cosg2;
+	double normR;
+	normR = sqrt(sqr_vect_norm(par->R[0], par->R[1]));
+	cosg1 = (par->xda * par->R[0] + par->yda * par->R[1]) / (par->da * normR);
+ 	cosg2 = (par->xdb * par->R[0] + par->ydb * par->R[1]) / (par->db * normR);
+
+ 	if (normR == 0)
+ 		return 0;
+ 	else
+ 		return cosg1 * cosg2 / pow(normR, 2);
+}
+
+void FixHeatGran::calculate_vector(struct param * par, int ia, int ib)
+{
+	//Calculates the value of the R vector
+	par->R[0] = par->D - par->xda - par->xdb;
+	par->R[1] = - par->yda - par->ydb;
+
+}
+
+//This function tests if the two points can physically "see" each other,
+//by testing the scalar product of the 2 vectors.
+bool FixHeatGran::scalar_test(struct param * par)
+{
+	double scala = par->xda * par->R[0] + par->yda * par->R[1];
+	double scalb = par->xdb * par->R[0] + par->ydb * par->R[1];
+
+	if(scala > 0 && scalb > 0)
+		return true;
+
+	else
+		return false;
+}
+
+double FixHeatGran::procedeCalc(double radA, double radB, double dist)
+{
+	int ia = 0;
+	int ib = 0;
+	double integral = 0;
+
+	//init parameter
+
+	struct param par;
+
+	//If the radius is not specified, take the default value
+	par.da = radA;
+	par.db = radB;
+	par.D = dist;
+
+	par.integral = 0;
+
+	//starting discrete integration
+	for (ia = 0 ; ia < nb_int ; ia++)
+	{
+		integral = 0;
+
+		// Calculates the vector da coordinates, according to the angle ia
+		par.xda = par.da * cos((M_PI * ia) / (2 * nb_int));
+		par.yda = par.da * sin((M_PI * ia) / (2 * nb_int));
+
+		for (ib=0;ib<2*nb_int;ib++)
+		{
+
+			// Calculates the vector db coordinates, according to the angle ib
+			par.xdb = par.db * cos(-M_PI / 2 + (M_PI * ib) / (2 * nb_int));
+			par.ydb = par.db * sin((M_PI * ib) / (2 * nb_int));
+
+			calculate_vector(&par, ia, ib);
+			if(scalar_test(&par))
+				integral = integral + integrate(&par) * third_D_coef(par.db, par.ydb, nb_int) / 2;
+		}
+		integral = integral * third_D_coef(par.da, par.yda, nb_int);
+		par.integral += integral;
+	}
+        par.integral /= 4 * pow((M_PI * par.da ),2); 
+	return par.integral*80000;
 }

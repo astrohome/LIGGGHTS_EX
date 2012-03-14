@@ -28,7 +28,10 @@ FixStyle(heat/gran,FixHeatGran)
 
 #include "fix.h"
 
-namespace LAMMPS_NS {
+#define BOLTS   5.670400*pow((double)10,-8)
+
+namespace LAMMPS_NS {   
+    
 
 class FixHeatGran : public Fix {
  public:
@@ -52,6 +55,30 @@ class FixHeatGran : public Fix {
   }
 
  private:
+     
+     struct param {
+  double da;
+  double db;
+  double D;
+
+  double xda;
+  double xdb;
+  double yda;
+  double ydb;
+
+  double R [2];
+  double integral;
+
+};
+  
+  double procedeCalc(double,double,double);
+  bool scalar_test(struct param * );
+  void calculate_vector(struct param * , int , int );
+  double integrate(struct param * );
+  double sqr_vect_norm(double , double );
+  double third_D_coef(double , double , int );
+  double dist(double , double , double , double , double , double );
+  double powerCalc(double , double );
 
   template <int> void post_force_eval(int,int);
 
@@ -68,6 +95,7 @@ class FixHeatGran : public Fix {
   double *heatFlux;       
   double *heatSource;     
   double *conductivity;
+  double nb_int;     //Integration precision
 
   // for heat transfer area correction
   int area_correction;
