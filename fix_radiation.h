@@ -61,10 +61,10 @@ class FixRadiation : public Fix {
      class FixPropertyAtom* fix_temp;
      class FixPropertyAtom* fix_heatFlux;
      class FixPropertyAtom* fix_heatSource;
-     class FixPropertyGlobal* fix_conductivity;
+     class FixPropertyGlobal* fix_capacity;
      class FixScalarTransportEquation *fix_ste;
      
-     double *conductivity;
+     double *capacity;
      double *heatSource; 
      double *heatFlux; 
      double *Temp;

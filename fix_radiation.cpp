@@ -24,6 +24,7 @@
 #include "timer.h"
 #include "respa.h"
 #include "compute_pair_gran_local.h"
+#include "modify.h"
 #include <math.h>
 
 using namespace LAMMPS_NS;
@@ -34,31 +35,12 @@ FixRadiation::FixRadiation(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, a
     if (narg < 4) error->all("Illegal fix heat/radiation command, not enough arguments");
     
     fix_temp = fix_heatFlux = fix_heatSource = NULL;
-    fix_conductivity = NULL;
+    fix_capacity = NULL;
     
-    conductivity = NULL;
+    capacity = NULL;
     
     nb_int = atof(arg[3]);
-    /*sy = atof(arg[4]);
-    sz = atof(arg[5]);
-    
-    sr = atof(arg[6]);
-    wavelength = atof(arg[7]);
-    intensity = atof(arg[8]);
-    
-    st = atof(arg[10]);
-    cutoff = atoi(arg[11]);
-    nb_int = atoi(arg[12]);
-    
-    for(int a = 0; a<13; a++)
-    {
-        cout<<"param["<<a<<"]="<<arg[a]<<endl;
-    }
-    
-    ss = 
-    
-    sp = ss*1*pow(st,4) * BOLTS;*/
-    
+        
     pair_gran = static_cast<PairGran*>(force->pair_match("gran", 0));
 }
 
@@ -75,15 +57,15 @@ void FixRadiation::post_force(int a)
   
   int i,j,ii,jj,inum,jnum;  
   
-  int newton_pair = force->newton_pair;
+  //int newton_pair = force->newton_pair;
   
   if (strcmp(force->pair_style,"hybrid")==0) error->warning("Fix heat/gran implementation may not be valid for pair style hybrid");
   if (strcmp(force->pair_style,"hybrid/overlay")==0) error->warning("Fix heat/gran implementation may not be valid for pair style hybrid/overlay");
   
   inum = pair_gran->list->inum;
   ilist = pair_gran->list->ilist;
-  numneigh = pair_gran->list->numneigh;
-  firstneigh = pair_gran->list->firstneigh;
+  //numneigh = pair_gran->list->numneigh;
+  //firstneigh = pair_gran->list->firstneigh;
 
   double *radius = atom->radius;
   double *rmass = atom->rmass;
@@ -93,6 +75,9 @@ void FixRadiation::post_force(int a)
   int *mask = atom->mask;
   
   updatePtrs();
+  
+  double powerE[inum];
+  double powerR[inum];
   
   // loop over neighbors of my atoms
   for (ii = 0; ii < inum; ii++) {
@@ -106,37 +91,68 @@ void FixRadiation::post_force(int a)
       z = pos[i][2];
 
       radi = radius[i];
-      jlist = firstneigh[i];
-      jnum = numneigh[i];
+      //jlist = firstneigh[i];
+      //jnum = numneigh[i];
       
-      Cpi = conductivity[type[i]-1];
+      Cpi = capacity[type[i]-1];
+      //cout<<"Radi = "<<radi<<" Cpi="<<Cpi<<endl;
       power = powerCalc(radi,Temp[i]);
       //cout<<"Power: "<<power<<endl;
       Qe = power * update->dt;
+      //powerE[i] = Qe;
       //cout<<"Qe = "<<Qe<<endl;
+      //heatFlux[i] -= Qe;
       mi = rmass[i];
       Temp[i] -= Qe / (mi*Cpi);
       //cout<<"Temp will decrease by "<<Qe / (mi*Cpi)<<endl;
       //cout<<"T = "<<Temp[i]<<endl;
-      
-      for(jj = 0; jj < jnum; jj++) {      
-            j = jlist[jj];
+      for(jj=0;jj<inum;jj++)
+      {
+          
+            j = ilist[jj];
+            
+            //cout<<"j="<<j<<endl;
+            if(j==i) continue;
             nx = pos[j][0];
             ny = pos[j][1];
             nz = pos[j][2];
             radj = radius[j];
           
             distc = dist(x,y,z,nx,ny,nz);
-            //cout<<"Distance = "<<distc<<endl;
-            Cpj = conductivity[type[j]-1];
+            if(distc <= 5 * radi) {
+            //cout<<"DistanceN = "<<distc<<endl;
+            Cpj = capacity[type[j]-1];
+            //cout<<"Radj = "<<radj<<" Cpj="<<Cpj<<endl;
             shapef = procedeCalc(radi, radj, distc);
-            mj = rmass[j]; 
+            //cout<<"Shapef = "<<shapef<<endl;
+            //cout<<"Qr = "<<Qe*shapef<<endl;
+            mj = rmass[j];
+            //cout<<"Mass="<<mj<<endl;
+            
+            //heatFlux[j] += Qe*shapef;
+            //powerR[j] += Qe*shapef;
+            
             dt = (shapef*Qe)/(mj*Cpj);
             //cout<<"Neight temp will increase by "<<dt<<endl;                        
+            //cout<<"Told = "<<Temp[j]<<endl;
             Temp[j] += dt; 
             //cout<<"Tn = "<<Temp[j]<<endl;
+            }
       }     
-  }      
+      
+  }
+  //for(int i=0;i<inum;i++)
+  //{
+  //    cout<<heatFlux[i]<<endl;
+  //}
+  //for(int i=0;i<inum;i++)
+    // {
+         // cout<<"Particle "<<i<<" T: "<<Temp[i]<<" R: "<<powerR[i]<<" E: "<<powerE[i]<<" Diff: "<<powerR[i]- powerE[i]<<endl;
+     // int h = ilist[i];
+     // cout<<"Temp: "<<Temp[h]<<endl;//+=(powerR[i]- powerE[i]);
+          //powerR[i]=0;
+          //powerE[i]=0;
+     // }
 }
 
 double FixRadiation::dist(double x1, double y1, double z1, double x2, double y2, double z2)
@@ -171,18 +187,22 @@ void FixRadiation::init()
     fix_heatFlux = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatFlux","property/atom","scalar",0,0));
     fix_heatSource = static_cast<FixPropertyAtom*>(modify->find_fix_property("heatSource","property/atom","scalar",0,0));
 
+    //fix_ste = modify->find_fix_scalar_transport_equation("heattransfer");
+    //if(!fix_ste) error->all("Fix heat/gran needs a fix transportequation/scalar to work with");
+    
+    
     int max_type = pair_gran->mpg->max_type();
 
-    if(conductivity) delete []conductivity;
-    conductivity = new double[max_type];
-    fix_conductivity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalCapacity","property/global","peratomtype",max_type,0));
+    if(capacity) delete []capacity;
+    capacity = new double[max_type];
+    fix_capacity = static_cast<FixPropertyGlobal*>(modify->find_fix_property("thermalCapacity","property/global","peratomtype",max_type,0));
 
     // pre-calculate conductivity for possible contact material combinations
     for(int i=1;i< max_type+1; i++)
         for(int j=1;j<max_type+1;j++)
         {
-            conductivity[i-1] = fix_conductivity->compute_vector(i-1);
-            if(conductivity[i-1] < 0.) error->all("Fix heat/gran: Thermal conductivity must not be < 0");
+            capacity[i-1] = fix_capacity->compute_vector(i-1);
+            if(capacity[i-1] < 0.) error->all("Fix heat/gran: Thermal capacity must not be < 0");
         }
 
     updatePtrs();
@@ -289,5 +309,5 @@ double FixRadiation::procedeCalc(double radA, double radB, double dist)
 		par.integral += integral;
 	}
         par.integral /= 4 * pow((M_PI * par.da ),2); 
-	return par.integral;
+	return par.integral*40000;
 }
