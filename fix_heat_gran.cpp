@@ -58,10 +58,12 @@ FixHeatGran::FixHeatGran(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg
   for (int i = 0; i < modify->nfix; i++)
       if (strcmp(modify->fix[i]->style,style) == 0) error->all("A fix of type heat/gran is already registered. Cannot have more than one");
 
-  if (narg < 4) error->all("Illegal fix heat/gran command, not enough arguments");
+  if (narg < 7) error->all("Illegal fix heat/gran command, not enough arguments");
   T0 = atof(arg[3]);
   
   nb_int = atof(arg[4]);
+  cutoff = atoi(arg[5]);
+  rad = atoi(arg[6]);
 
   fix_temp = fix_heatFlux = fix_heatSource = NULL;
   fix_conductivity = NULL;
@@ -275,21 +277,26 @@ void FixHeatGran::post_force_eval(int vflag,int cpl_flag)
     jlist = firstneigh[i];
     jnum = numneigh[i];
     
-    Q = powerCalc(radi,Temp[i]);
-    
-    heatFlux[i] -= Q;
-    int r;
-    for(r=0;r<inum;r++)
+    if(rad==1)
     {
-        j = ilist[r];
-        if(i==j) continue;
-        
-        //cout<<"Test"<<endl;
-        radj = radius[j];
-        
-        if(radi>radj)        
-                heatFlux[j] += Q * procedeCalc(radj,radi,dist(xtmp, ytmp,ztmp,x[j][0],x[j][1],x[j][2]));
-        else heatFlux[j] += Q * procedeCalc(radi,radj,dist(xtmp, ytmp,ztmp,x[j][0],x[j][1],x[j][2]));
+        Q = powerCalc(radi,Temp[i]);
+
+        heatFlux[i] -= Q;
+        int r;
+        for(r=0;r<inum;r++)
+        {
+            j = ilist[r];
+            if(i==j) continue;
+            
+            double dist2 = dist(xtmp, ytmp,ztmp,x[j][0],x[j][1],x[j][2]);
+            
+            if(dist2 <= cutoff*radi)
+            {
+            
+                radj = radius[j];            
+                heatFlux[j] += Q * procedeCalc(radj,radi,dist2);
+            }
+        }
     }
     
     
