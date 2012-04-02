@@ -96,6 +96,8 @@ class FixHeatGran : public Fix {
   double *heatSource;     
   double *conductivity;
   double nb_int;     //Integration precision
+  int cutoff;
+  int rad;
 
   // for heat transfer area correction
   int area_correction;
@@ -109,4 +111,3 @@ class FixHeatGran : public Fix {
 
 #endif
 #endif
-
